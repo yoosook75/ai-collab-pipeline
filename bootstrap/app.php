@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\BlockSuspiciousIps;
 use App\Http\Middleware\TrustConfiguredProxies;
+use App\Security\ErrorSpikeMonitor;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -20,6 +21,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToGroup('web', BlockSuspiciousIps::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->report(function (Throwable $e): void {
+            try {
+                app(ErrorSpikeMonitor::class)->record($e);
+            } catch (Throwable) {
+                // Never let spike monitoring break error reporting.
+            }
+        });
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

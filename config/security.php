@@ -24,4 +24,14 @@ return [
         // Comma-separated CIDRs of the reverse proxy network (acp-edge). Empty = trust nobody.
         'trusted_proxies' => env('TRUSTED_PROXIES', ''),
     ],
+    'errors' => [
+        'threshold' => 10,
+        'window_minutes' => 5,
+        'dedupe_hours' => 24,
+        'daily_issue_cap' => 5,
+    ],
+    'disk' => [
+        'min_free_ratio' => 0.10,
+        'path' => '/',
+    ],
 ];
