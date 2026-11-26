@@ -1,0 +1,63 @@
+# One compose project per environment:
+#   ACP_ENV_FILE=/opt/acp/staging/.env docker compose -p acp-staging --env-file "$ACP_ENV_FILE" -f compose.yml up -d
+#   ACP_ENV_FILE=/opt/acp/prod/.env    docker compose -p acp-prod    --env-file "$ACP_ENV_FILE" -f compose.yml up -d
+
+x-app: &app
+  image: ${APP_IMAGE:?APP_IMAGE is required}
+  env_file:
+    - ${ACP_ENV_FILE:?ACP_ENV_FILE is required}
+  restart: unless-stopped
+  depends_on:
+    db:
+      condition: service_healthy
+  networks:
+    - internal
+
+services:
+  web:
+    <<: *app
+    environment:
+      RUN_MIGRATIONS: "1"
+    mem_limit: 512m
+    networks:
+      internal: {}
+      acp-edge:
+        aliases:
+          - acp-${APP_ENV_LABEL:?APP_ENV_LABEL is required}-web
+
+  worker:
+    <<: *app
+    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600"]
+    mem_limit: 256m
+
+  scheduler:
+    <<: *app
+    command: ["php", "artisan", "schedule:work"]
+    mem_limit: 256m
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:?}
+      MYSQL_USER: ${DB_USERNAME:?}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 768m
+    networks:
+      - internal
+
+volumes:
+  db-data:
+
+networks:
+  internal: {}
+  acp-edge:
+    external: true
