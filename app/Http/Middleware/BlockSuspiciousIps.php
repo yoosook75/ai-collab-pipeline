@@ -24,7 +24,12 @@ class BlockSuspiciousIps
         }
 
         if ($this->blocker->isProbe($request->path())) {
-            $this->blocker->block($ip, "취약 경로 탐색: /{$request->path()}", (int) config('security.ip.probe_block_minutes'));
+            $this->blocker->block(
+                $ip,
+                "취약 경로 탐색: /{$request->path()}",
+                (int) config('security.ip.probe_block_minutes'),
+                (bool) config('security.ip.notify_probe_blocks'),
+            );
             abort(403);
         }
 

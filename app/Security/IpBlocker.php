@@ -17,7 +17,7 @@ class IpBlocker
         return BlockedIp::where('ip', $ip)->where('expires_at', '>', now())->exists();
     }
 
-    public function block(string $ip, string $reason, int $minutes): BlockedIp
+    public function block(string $ip, string $reason, int $minutes, bool $notify = true): BlockedIp
     {
         $existing = BlockedIp::where('ip', $ip)->first();
         if ($existing && $existing->expires_at->isFuture()) {
@@ -28,6 +28,10 @@ class IpBlocker
             'reason' => $reason,
             'expires_at' => now()->addMinutes($minutes),
         ]);
+
+        if (! $notify) {
+            return $block;
+        }
 
         $this->notifier->send(new OpsEvent(
             'IP 일시 차단',

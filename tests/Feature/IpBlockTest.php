@@ -4,11 +4,32 @@ use App\Models\User;
 use App\Security\IpBlocker;
 use Illuminate\Support\Facades\URL;
 
-it('blocks probe path and notifies with signed unblock link', function () {
+it('blocks probe path without a per-event alert (daily .env summary covers it)', function () {
     $ops = fakeOpsNotifier();
 
     $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])->get('/.env')->assertForbidden();
     $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])->get('/')->assertForbidden();
+
+    expect($ops->events)->toBeEmpty();
+});
+
+it('probe block alerts can be turned back on by config', function () {
+    config(['security.ip.notify_probe_blocks' => true]);
+    $ops = fakeOpsNotifier();
+
+    $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])->get('/.env')->assertForbidden();
+
+    expect($ops->events)->toHaveCount(1)
+        ->and($ops->events[0]->url)->toContain('/ops/unblock/203.0.113.9')->toContain('signature=');
+});
+
+it('flood block still alerts immediately with signed unblock link', function () {
+    config(['security.ip.max_requests' => 3]);
+    $ops = fakeOpsNotifier();
+
+    foreach (range(1, 4) as $_) {
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])->get('/');
+    }
 
     expect($ops->events)->toHaveCount(1)
         ->and($ops->events[0]->url)->toContain('/ops/unblock/203.0.113.9')->toContain('signature=');
@@ -33,8 +54,8 @@ it('blocks an ip that floods requests', function () {
 it('does not notify again for an ip that is already blocked', function () {
     $ops = fakeOpsNotifier();
 
-    $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])->get('/.env');
-    $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])->get('/wp-admin');
+    app(IpBlocker::class)->block('203.0.113.9', 'test', 60);
+    app(IpBlocker::class)->block('203.0.113.9', 'test', 60);
 
     expect($ops->events)->toHaveCount(1);
 });
