@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\OpsDemoController;
 use App\Http\Controllers\OpsUnblockController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\UnlockController;
@@ -27,6 +28,9 @@ Route::middleware('throttle:10,1')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
+
+    // Staging + admin only; the controller decides (404/403) so config can be swapped in tests.
+    Route::get('/ops/demo-error', OpsDemoController::class)->name('ops.demo-error');
 
     Route::view('/email/verify', 'auth.verify-email')->name('verification.notice');
     Route::get('/email/verify/{id}/{hash}', function (EmailVerificationRequest $request) {
