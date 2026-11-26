@@ -1,0 +1,65 @@
+name: uptime
+
+# External check: the app cannot report its own outage, so GitHub checks it from outside.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [staging, production]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe /up and TLS
+        id: probe
+        env:
+          URL: ${{ matrix.target == 'staging' && vars.STAGING_URL || vars.PROD_URL }}
+        run: |
+          if [ -z "$URL" ]; then echo "level=skip" >> "$GITHUB_OUTPUT"; exit 0; fi
+          problems=()
+          level=info
+
+          result=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 15 "$URL/up" || echo "000 15")
+          code=${result% *}; secs=${result#* }
+          if [ "$code" != "200" ]; then
+            problems+=("/up 응답 코드 $code"); level=critical
+          elif awk "BEGIN{exit !($secs > 3)}"; then
+            problems+=("응답 느림: ${secs}초"); [ "$level" = critical ] || level=warn
+          fi
+
+          host=$(echo "$URL" | sed -E 's#^https?://([^/:]+).*#\1#')
+          not_after=$(echo | openssl s_client -servername "$host" -connect "$host:443" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || true)
+          if [ -n "$not_after" ]; then
+            days=$(bash .github/scripts/days-until.sh "$(date -u -d "$not_after" +%F)")
+            if [ "$days" -lt 14 ]; then problems+=("TLS 인증서 만료까지 ${days}일"); [ "$level" = critical ] || level=warn; fi
+          else
+            problems+=("TLS 인증서를 확인할 수 없음"); [ "$level" = critical ] || level=warn
+          fi
+
+          if [ ${#problems[@]} -eq 0 ]; then echo "level=ok" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "level=$level" >> "$GITHUB_OUTPUT"
+          { echo "summary<<EOF_SUM"; printf '%s\n' "${problems[@]}"; echo "EOF_SUM"; } >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${problems[@]}"
+
+      - if: steps.probe.outputs.level == 'warn' || steps.probe.outputs.level == 'critical'
+        uses: ./.github/actions/notify
+        env:
+          DISCORD_WEBHOOK_OPS: ${{ secrets.DISCORD_WEBHOOK_OPS }}
+          SLACK_WEBHOOK_OPS: ${{ secrets.SLACK_WEBHOOK_OPS }}
+        with:
+          provider: ${{ vars.NOTIFY_PROVIDER || 'discord' }}
+          channel: ops
+          level: ${{ steps.probe.outputs.level }}
+          title: "가동 확인 이상: ${{ matrix.target }}"
+          summary: ${{ steps.probe.outputs.summary }}
+          url: ${{ matrix.target == 'staging' && vars.STAGING_URL || vars.PROD_URL }}

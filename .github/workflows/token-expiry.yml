@@ -1,0 +1,49 @@
+name: token-expiry
+
+# The Claude subscription token (CLAUDE_CODE_OAUTH_TOKEN) is valid for one year.
+# Its expiry date lives in the repository variable CLAUDE_TOKEN_EXPIRES (YYYY-MM-DD).
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: days
+        env:
+          EXPIRES: ${{ vars.CLAUDE_TOKEN_EXPIRES }}
+        run: |
+          if [ -z "$EXPIRES" ]; then
+            echo "level=warn" >> "$GITHUB_OUTPUT"
+            echo "summary=저장소 변수 CLAUDE_TOKEN_EXPIRES가 비어 있습니다." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          days=$(bash .github/scripts/days-until.sh "$EXPIRES")
+          if [ "$days" -lt 0 ]; then
+            echo "level=critical" >> "$GITHUB_OUTPUT"
+            echo "summary=Claude 토큰이 ${EXPIRES}에 만료되었습니다. AI 작업이 멈춥니다. claude setup-token으로 새 토큰을 발급해 비밀값과 변수를 갱신하세요." >> "$GITHUB_OUTPUT"
+          elif [ "$days" -le 30 ]; then
+            echo "level=warn" >> "$GITHUB_OUTPUT"
+            echo "summary=Claude 토큰 만료까지 ${days}일 남았습니다(${EXPIRES}). claude setup-token으로 갱신하세요." >> "$GITHUB_OUTPUT"
+          else
+            echo "level=ok" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.days.outputs.level != 'ok'
+        uses: ./.github/actions/notify
+        env:
+          DISCORD_WEBHOOK_DEV: ${{ secrets.DISCORD_WEBHOOK_DEV }}
+          SLACK_WEBHOOK_DEV: ${{ secrets.SLACK_WEBHOOK_DEV }}
+        with:
+          provider: ${{ vars.NOTIFY_PROVIDER || 'discord' }}
+          channel: dev
+          level: ${{ steps.days.outputs.level }}
+          title: "Claude 토큰 만료 알림"
+          summary: ${{ steps.days.outputs.summary }}
+          url: ${{ github.server_url }}/${{ github.repository }}/settings/secrets/actions
