@@ -72,3 +72,19 @@ docker exec webstack-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapte
 docker network disconnect acp-edge webstack-caddy-1 && docker network rm acp-edge
 sudo deluser --remove-home acp-deploy && sudo rm -rf /opt/acp
 ```
+
+## 5. compose 파일 변경은 서버에 수동 반영
+
+배포 스크립트는 서버의 `/opt/acp/compose.yml`(root 소유)을 씁니다. AI나 자동 배포가 서버 구성을 바꿀 수 없게 하려는 것이라,
+저장소의 `docker/compose.yml`이 바뀌어도 서버에는 자동으로 반영되지 않습니다. 해당 PR이 머지되면 다음을 실행합니다.
+
+```bash
+git show origin/main:docker/compose.yml > compose.yml                     # 머지된 내용
+sudo cp -p /opt/acp/compose.yml /opt/acp/compose.yml.bak-$(date +%Y%m%d%H%M)
+sudo install -o root -g root -m 644 compose.yml /opt/acp/compose.yml
+SHA=$(sudo cat /opt/acp/staging/last_sha)                                 # 이미지는 그대로, 설정만 다시 반영
+sudo -u acp-deploy env ACP_ENV_FILE=/opt/acp/staging/.env APP_IMAGE=ghcr.io/yoosook75/ai-collab-pipeline:$SHA \
+  docker compose -p acp-staging --env-file /opt/acp/staging/.env -f /opt/acp/compose.yml up -d
+```
+
+기록: 2026-11-26 PR #9(상태 점검 수정) 머지 후 위 절차로 반영 → web healthy, worker/scheduler 점검 없음.
