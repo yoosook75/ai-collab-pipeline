@@ -1,3 +1,6 @@
+# Every PR needs the owner's approval, so an approval from any bot (including our AI) never suffices.
+* @yoosook75
+
 # Generated from .github/risk-paths.txt — high-risk paths require the owner's review.
 /app/Http/Controllers/Auth/** @yoosook75
 /app/Security/** @yoosook75

@@ -79,6 +79,7 @@ jobs:
             CLAUDE.md의 규칙을 지키세요.
           claude_args: >-
             --allowedTools "Read,Grep,Glob,Edit,Write,MultiEdit,Bash(git:*),Bash(gh pr create:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(vendor/bin/pest:*),Bash(vendor/bin/pint:*),Bash(vendor/bin/phpstan:*)"
+            --disallowedTools "Bash(gh pr merge:*),Bash(gh pr review:*),Bash(gh pr close:*),Bash(gh api:*),Bash(git push origin main*),Bash(git push origin HEAD:main*)"
 
       - if: always()
         uses: ./.github/actions/notify
