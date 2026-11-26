@@ -13,7 +13,7 @@ class PostController extends Controller
     public function index(): View
     {
         return view('posts.index', [
-            'posts' => Post::visible()->with('user')->latest()->limit(50)->get(),
+            'posts' => Post::visible()->with('user')->latest()->latest('id')->paginate(10),
         ]);
     }
 
