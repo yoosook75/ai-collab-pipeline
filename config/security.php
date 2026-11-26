@@ -4,6 +4,7 @@ return [
     'login' => [
         'max_failures' => 5,
         'window_minutes' => 15,
+        'throttle_per_minute' => 5,
     ],
     'unlock' => [
         'code_ttl_minutes' => 15,

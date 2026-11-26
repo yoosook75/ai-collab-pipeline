@@ -11,8 +11,19 @@ class LoginLockout
 {
     public function __construct(private OpsNotifier $notifier) {}
 
+    /**
+     * Short throttle that applies to everyone, admins included: it delays guessing
+     * without locking anyone out.
+     */
+    public function tooManyAttempts(string $email): bool
+    {
+        return RateLimiter::tooManyAttempts($this->throttleKey($email), (int) config('security.login.throttle_per_minute'));
+    }
+
     public function recordFailure(string $email): void
     {
+        RateLimiter::hit($this->throttleKey($email), 60);
+
         $key = $this->key($email);
         RateLimiter::hit($key, (int) config('security.login.window_minutes') * 60);
 
@@ -31,7 +42,7 @@ class LoginLockout
             '계정 잠금',
             'warn',
             "로그인 연속 실패로 사용자 #{$user->id} 계정을 잠갔습니다. 본인이 이메일 인증으로 해제할 수 있습니다.",
-            null,
+            config('app.url'),
             ['사용자' => "#{$user->id}", '실패 횟수' => (string) RateLimiter::attempts($key)],
         ));
     }
@@ -39,6 +50,12 @@ class LoginLockout
     public function clear(string $email): void
     {
         RateLimiter::clear($this->key($email));
+        RateLimiter::clear($this->throttleKey($email));
+    }
+
+    private function throttleKey(string $email): string
+    {
+        return 'login-throttle:'.sha1(mb_strtolower(trim($email)));
     }
 
     private function key(string $email): string

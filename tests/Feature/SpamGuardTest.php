@@ -78,3 +78,14 @@ it('admin is never restricted', function () {
 
     expect($u->fresh()->posting_restricted_at)->toBeNull();
 });
+
+it('spam alert links to the app', function () {
+    $ops = fakeOpsNotifier();
+    $u = User::factory()->create();
+
+    foreach (range(1, 3) as $i) {
+        $this->actingAs($u)->post('/posts', ['title' => "t$i", 'body' => 'same spam']);
+    }
+
+    expect($ops->events[0]->url)->toBe(config('app.url'));
+});

@@ -31,3 +31,18 @@ it('stays quiet when disk has room', function () {
 
     expect($ops->events)->toBeEmpty();
 });
+
+it('disk alert links to the app', function () {
+    $ops = fakeOpsNotifier();
+    app()->instance(DiskUsage::class, new class extends DiskUsage
+    {
+        public function freeRatio(string $path): float
+        {
+            return 0.01;
+        }
+    });
+
+    $this->artisan('ops:check-disk');
+
+    expect($ops->events[0]->url)->toBe(config('app.url'));
+});

@@ -60,7 +60,9 @@ class IncidentReporter
     /** @param  array<string, string|int>  $p */
     private function body(array $p): string
     {
-        $message = Masker::mask((string) $p['message']);
+        // Mask again (defence in depth) and neutralise markdown fences and @mentions:
+        // the body is public and is read by the AI fixer.
+        $message = str_replace(['`', '@'], ["'", '(at)'], Masker::mask((string) $p['message']));
 
         return <<<MD
         운영 환경에서 같은 오류가 짧은 시간에 반복되어 자동으로 만든 이슈입니다.

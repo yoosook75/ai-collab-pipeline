@@ -24,3 +24,30 @@ it('masker hides long base64 like blobs', function () {
 
     expect(Masker::mask("token {$blob} end"))->not->toContain($blob);
 });
+
+it('masker hides env style keys', function () {
+    $out = Masker::mask('DB_PASSWORD=hunter2 MAIL_PASSWORD=s3cretpw APP_KEY=abc');
+
+    expect($out)->not->toContain('hunter2')->not->toContain('s3cretpw')->not->toContain('=abc');
+});
+
+it('masker hides json and php array secrets', function () {
+    expect(Masker::mask('{"password":"hunter2","api_key":"abc123"}'))->not->toContain('hunter2')->not->toContain('abc123');
+    expect(Masker::mask("'password' => 'hunter2'"))->not->toContain('hunter2');
+});
+
+it('masker hides credentials in urls', function () {
+    expect(Masker::mask('mysql://acp:hunter2@db:3306/acp'))->not->toContain('hunter2')->toContain('db:3306');
+});
+
+it('masker hides authorization header values', function () {
+    expect(Masker::mask('Authorization: token ghp_short'))->not->toContain('ghp_short');
+    expect(Masker::mask('leaked ghp_abcDEF123 here'))->not->toContain('ghp_abcDEF123');
+});
+
+it('masker replaces configured secret values exactly', function () {
+    config(['database.connections.mysql.password' => 'plain-db-pass', 'ops.github.token' => 'gh-token-value']);
+
+    expect(Masker::mask('connect failed with plain-db-pass and gh-token-value'))
+        ->not->toContain('plain-db-pass')->not->toContain('gh-token-value');
+});

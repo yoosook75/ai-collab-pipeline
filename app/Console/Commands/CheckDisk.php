@@ -24,6 +24,7 @@ class CheckDisk extends Command
                 '디스크 부족',
                 'critical',
                 sprintf('%s 여유 공간이 %.1f%%입니다 (기준 %.0f%%).', $path, $ratio * 100, $min * 100),
+                config('app.url'),
             ));
         }
 

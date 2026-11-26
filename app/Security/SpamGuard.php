@@ -42,7 +42,7 @@ class SpamGuard
             '스팸 의심 — 글쓰기 제한',
             'warn',
             "사용자 #{$user->id}의 글쓰기를 제한하고 최근 글 {$recent->count()}개를 숨겼습니다(삭제 아님). 본인이 이메일 인증으로 해제할 수 있습니다.",
-            null,
+            config('app.url'),
             ['사용자' => "#{$user->id}", '사유' => $reason],
         ));
 

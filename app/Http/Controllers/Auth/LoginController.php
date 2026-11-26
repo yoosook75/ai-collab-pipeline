@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Security\LoginLockout;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
@@ -19,7 +20,7 @@ class LoginController extends Controller
         return view('auth.login');
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|Response
     {
         $credentials = $request->validate([
             'email' => ['required', 'email'],
@@ -30,6 +31,10 @@ class LoginController extends Controller
         if ($user?->locked_at && ! $user->is_admin) {
             return back()->with('locked', true)
                 ->withErrors(['email' => '계정이 잠겼습니다. 이메일 인증으로 해제하세요.'])->onlyInput('email');
+        }
+
+        if ($this->lockout->tooManyAttempts($credentials['email'])) {
+            return response()->view('auth.login', ['throttled' => true], 429);
         }
 
         if (! Auth::attempt($credentials)) {

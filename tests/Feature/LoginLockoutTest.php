@@ -45,3 +45,28 @@ it('locked login error points to unlock page', function () {
 
     $this->get('/login')->assertSee(route('unlock.request', ['purpose' => 'login']), false);
 });
+
+it('throttles admin password guessing without locking', function () {
+    $u = User::factory()->create(['is_admin' => true, 'password' => bcrypt('right-pass')]);
+
+    foreach (range(1, 5) as $_) {
+        $this->post('/login', ['email' => $u->email, 'password' => 'wrong']);
+    }
+
+    $this->post('/login', ['email' => $u->email, 'password' => 'right-pass'])->assertStatus(429)->assertSee('1분 뒤에 다시 시도하세요');
+    expect($u->fresh()->locked_at)->toBeNull();
+
+    $this->travel(61)->seconds();
+    $this->post('/login', ['email' => $u->email, 'password' => 'right-pass'])->assertRedirect('/');
+});
+
+it('lock alert links to the app', function () {
+    $ops = fakeOpsNotifier();
+    $u = User::factory()->create();
+
+    foreach (range(1, 5) as $_) {
+        $this->post('/login', ['email' => $u->email, 'password' => 'wrong']);
+    }
+
+    expect($ops->events[0]->url)->toBe(config('app.url'));
+});

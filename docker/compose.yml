@@ -2,7 +2,14 @@
 #   ACP_ENV_FILE=/opt/acp/staging/.env docker compose -p acp-staging --env-file "$ACP_ENV_FILE" -f compose.yml up -d
 #   ACP_ENV_FILE=/opt/acp/prod/.env    docker compose -p acp-prod    --env-file "$ACP_ENV_FILE" -f compose.yml up -d
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-app: &app
+  logging: *logging
   image: ${APP_IMAGE:?APP_IMAGE is required}
   env_file:
     - ${ACP_ENV_FILE:?ACP_ENV_FILE is required}
@@ -37,6 +44,7 @@ services:
 
   db:
     image: mysql:8.4
+    logging: *logging
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:?}
