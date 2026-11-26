@@ -1,0 +1,30 @@
+name: notify
+description: Send a Discord or Slack notification (provider is swappable).
+inputs:
+  provider:
+    description: discord | slack
+    default: discord
+  channel:
+    description: dev | ops
+    default: dev
+  title:
+    required: true
+  level:
+    description: info | warn | critical
+    default: info
+  summary:
+    default: ""
+  url:
+    default: ""
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PROVIDER: ${{ inputs.provider }}
+        CHANNEL: ${{ inputs.channel }}
+        TITLE: ${{ inputs.title }}
+        LEVEL: ${{ inputs.level }}
+        SUMMARY: ${{ inputs.summary }}
+        URL: ${{ inputs.url }}
+      run: bash "${{ github.action_path }}/notify.sh"
