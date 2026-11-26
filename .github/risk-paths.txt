@@ -1,0 +1,14 @@
+# One glob per line. A PR touching any of these is labeled risk:high
+# and needs the code owner's review. Keep in sync with .github/CODEOWNERS.
+app/Http/Controllers/Auth/**
+app/Security/**
+app/Http/Middleware/**
+database/migrations/**
+.github/**
+docker/**
+deploy/**
+config/**
+composer.json
+composer.lock
+bootstrap/app.php
+.env*

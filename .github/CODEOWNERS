@@ -1,0 +1,13 @@
+# Generated from .github/risk-paths.txt — high-risk paths require the owner's review.
+/app/Http/Controllers/Auth/** @yoosook75
+/app/Security/** @yoosook75
+/app/Http/Middleware/** @yoosook75
+/database/migrations/** @yoosook75
+/.github/** @yoosook75
+/docker/** @yoosook75
+/deploy/** @yoosook75
+/config/** @yoosook75
+/composer.json @yoosook75
+/composer.lock @yoosook75
+/bootstrap/app.php @yoosook75
+/.env* @yoosook75
