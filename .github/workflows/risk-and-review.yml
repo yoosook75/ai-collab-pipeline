@@ -45,7 +45,7 @@ jobs:
           tail -n +2 "$RUNNER_TEMP/result.txt" > "$RUNNER_TEMP/risk-files.txt"
           echo "risk: $level"; cat "$RUNNER_TEMP/risk-files.txt"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: risk-files
           path: ${{ runner.temp }}/risk-files.txt
