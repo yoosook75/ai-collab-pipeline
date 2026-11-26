@@ -19,6 +19,8 @@ return [
     'ip' => [
         'probe_paths' => ['.env', 'wp-admin', 'wp-login.php', 'phpmyadmin', '.git/config', 'xmlrpc.php'],
         'probe_block_minutes' => 60,
+        // Probe blocks are summarised once a day by the server-side .env watcher; true = alert per block.
+        'notify_probe_blocks' => (bool) env('SECURITY_NOTIFY_PROBE_BLOCKS', false),
         'max_requests' => 300,
         'request_window_minutes' => 5,
         'flood_block_minutes' => 30,

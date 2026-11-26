@@ -114,3 +114,41 @@ sudo -u acp-deploy env ACP_ENV_FILE=/opt/acp/staging/.env APP_IMAGE=ghcr.io/yoos
 
 나중에 더 분리하려면: 메인 Caddyfile에 `import` 한 줄만 두고 이 프로젝트 블록을 별도 파일로 옮깁니다.
 단, 지금은 파일 하나만 연결돼 있어 폴더를 연결하려면 **Caddy 재시작이 한 번 필요**하므로(기존 사이트가 잠깐 끊김) 계획된 점검 시간에 합니다.
+
+## 보안 감시·로그 보관 (2026-11-26 적용)
+
+### SSH
+- `/etc/ssh/sshd_config.d/10-hardening.conf`에서 비밀번호 로그인을 끄고 키로만 접속(root는 `prohibit-password`)
+- 되돌리기: 파일 삭제 → `sudo sshd -t && sudo systemctl reload ssh`
+- 비상 접속: Contabo 패널의 VNC 콘솔(root 비밀번호)
+
+### Caddy 접속 기록
+- 네 사이트 블록 맨 앞에 `import accesslog <이름>` 한 줄씩(스니펫 `(accesslog)`은 파일 맨 위)
+- 기록 위치(호스트): `/var/lib/docker/volumes/webstack_caddy_data/_data/access/<이름>.log`
+  - JSON 형식, 50MiB마다 순환, 30일 보관
+  - Cookie·Authorization 헤더는 Caddy가 기록하지 않음
+- 백업: `/opt/webstack/Caddyfile.bak-20261126-accesslog`
+- 파일이 컨테이너에 단일 파일로 연결돼 있으므로 내용만 덮어씀(`cat 새파일 > /opt/webstack/Caddyfile`). 그다음 위의 검증·reload 순서를 따름
+
+### `.env` 접근 감시 (AI 호출 없음): `deploy/ops/env_watch.py` → `/opt/acp/bin/env_watch.py`
+| 타이머 | 시각 | 하는 일 |
+|---|---|---|
+| `acp-envwatch-daily.timer` | 매일 09:00 KST | 전날 `.env` 요청 전체 건수·응답 코드별·사이트별 건수를 `#ops-alerts`로 1회 보냄 |
+| `acp-envwatch-watch.timer` | 5분마다 | `.env` 경로에 **HTML이 아닌 2xx** 응답이 나가면 즉시 critical 경보 |
+
+- 2xx이면서 HTML인 응답은 SPA가 홈페이지를 대신 돌려준 것으로 보고 "파일 노출 아님"으로 따로 셈
+  - 예: deskora의 `/.env`는 홈페이지와 같은 파일임을 확인함
+- 추가 분석은 가림 처리된 기록만 씀: `sudo python3 /opt/acp/bin/env_watch.py extract --date YYYY-MM-DD`
+  - 쿼리 값은 `***`, IP 마지막 자리는 `x`, 헤더는 User-Agent만 남김
+- 앱의 탐색 경로 IP 차단은 계속하되, 건별 디스코드 알림은 끔(`SECURITY_NOTIFY_PROBE_BLOCKS=false`). 대량 요청 차단 알림은 그대로 즉시 보냄
+- 테스트: `python -m unittest deploy/ops/test_env_watch.py`
+
+### 로그 보관 30일
+- `/etc/logrotate.d/rsyslog`: daily, rotate 30
+- `/etc/logrotate.d/btmp`: daily, rotate 30, compress
+- 원본 백업: `/var/backups/acp-logcfg-20261126/`
+- `/etc/systemd/journald.conf.d/30-retention.conf`: `MaxRetentionSec=30day`, `SystemMaxUse=1G`
+- 조사용 원본 로그는 `/var/lib/acp-evidence/2026-11-26/`에 있음
+  - root 전용, `SHA256SUMS` 포함
+  - `/var/log` 밖에 있어 자동 삭제 대상이 아님
+- 남은 일: 기존 컨테이너(deskora, g7, webstack)의 도커 로그 순환은 재시작이 필요하므로 점검 시간에 적용
