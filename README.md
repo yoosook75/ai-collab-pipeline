@@ -71,11 +71,25 @@ AI 작업은 "임의의 코드 실행"으로 간주합니다. 그래서 보장�
 |---|---|---|
 | 같은 계정 로그인 5회 실패 | 계정 잠금 | 본인이 **이메일 인증 코드**로 해제(15분 유효, 5회 오입력 시 무효) |
 | 스팸성 글 폭주·같은 내용/링크 반복 | 글쓰기 제한, 최근 글 **숨김**(삭제 아님) | 이메일 인증 코드 |
-| 취약 경로 탐색(`/.env`, `/wp-admin` 등)·과도한 요청 | IP 일시 차단 | 시간 경과 또는 디스코드 알림의 **서명 링크**(24시간) |
+| 취약 경로 탐색(`/.env`, `/wp-admin` 등) | IP 1시간 차단(건별 알림 없음, 아래 일일 요약으로 확인) | 시간 경과 또는 관리자 로그인 |
+| 과도한 요청(5분 300회) | IP 30분 차단, 즉시 알림 | 시간 경과 또는 디스코드 알림의 **서명 링크**(24시간) |
+| 서버 전체 `.env` 접근(공용 Caddy 접속 기록, AI 호출 없음) | 매일 09:00 KST 전체 건수·응답 코드별·사이트별 요약 1회. HTML이 아닌 2xx 응답(실제 노출 의심)은 5분 안에 즉시 경보 | — |
 | 같은 오류 급증(5분 10회) | 개인정보·비밀값을 가린 **장애 이슈** 자동 생성 → AI가 분석·수정 PR | 사람 승인 |
 | 사이트 다운·느림·인증서 만료 임박(기존 사이트 포함) | 알림 | — |
 
-안전장치: 관리자 계정은 잠기지 않음(대신 로그인 시도 속도 제한), Caddy 뒤 실제 IP는 신뢰 프록시 대역에서만 인정, 장애 이슈는 중복 방지·하루 상한.
+안전장치:
+- 관리자 계정은 잠기지 않음(대신 로그인 시도 속도 제한)
+- Caddy 뒤 실제 IP는 신뢰 프록시 대역에서만 인정
+- 장애 이슈는 중복 방지·하루 상한
+- 2xx이면서 HTML인 응답은 SPA가 홈페이지를 대신 돌려준 것으로 보고 노출로 세지 않음(해시로 확인함)
+- 추가 분석은 쿼리 값·IP 끝자리·헤더를 가린 기록만 사용
+
+서버 쪽 보안(2026-11-26):
+- SSH는 키로만 접속
+- 시스템 로그 30일 보관
+- 조사용 원본 로그는 해시와 함께 자동 삭제 대상 밖에 따로 보존
+
+자세한 내용은 [deploy/server-setup.md](deploy/server-setup.md)에 있습니다.
 
 ## 실제 기록
 
@@ -85,7 +99,12 @@ AI 작업은 "임의의 코드 실행"으로 간주합니다. 그래서 보장�
 | 이슈로 AI에게 작업 요청 → 봇 PR → `docker/` 수정이라 `risk:high` | [이슈 #8](https://github.com/yoosook75/ai-collab-pipeline/issues/8) → [PR #9](https://github.com/yoosook75/ai-collab-pipeline/pull/9) |
 | 첫 실행에서 발견한 문제를 고치고 AI 개발·리뷰 역할 분리 | [PR #10](https://github.com/yoosook75/ai-collab-pipeline/pull/10) |
 | 일반 기능 요청(페이지 번호) → AI가 테스트 먼저 작성 → 봇이 직접 PR → `risk:low` → 읽기 전용 AI 리뷰 → 사람 승인 | [이슈 #11](https://github.com/yoosook75/ai-collab-pipeline/issues/11) → [PR #12](https://github.com/yoosook75/ai-collab-pipeline/pull/12) |
-| 정기 점검: Dependabot 의존성 업데이트 PR | [#2~#6](https://github.com/yoosook75/ai-collab-pipeline/pulls?q=author%3Aapp%2Fdependabot) |
+| 시연용 에러 경로(스테이징·관리자 전용)를 AI에게 요청 | [이슈 #14](https://github.com/yoosook75/ai-collab-pipeline/issues/14) → [PR #15](https://github.com/yoosook75/ai-collab-pipeline/pull/15) |
+| 장애 시연: 에러 급증 → 가림 처리된 장애 이슈 자동 생성 → AI가 "의도된 시연 오류"로 판단하고 **수정 PR을 만들지 않음** | [이슈 #16](https://github.com/yoosook75/ai-collab-pipeline/issues/16) |
+| 방어 시연: 스팸 6번째 글에서 글쓰기 제한·숨김 → 이메일 코드로 해제, 로그인 5회 실패 잠금 → 이메일 코드로 해제, IP 차단 → 서명 링크로 해제 | 스테이징에서 수동 시연 |
+| 시연 중 발견한 불편 3건을 이슈로 → AI PR | [이슈 #17](https://github.com/yoosook75/ai-collab-pipeline/issues/17) → [PR #18](https://github.com/yoosook75/ai-collab-pipeline/pull/18) |
+| 실제 공격 대응: 외부 스캐너의 `/.env` 탐색이 실서버에서 자동 차단됨 → 서버 점검(SSH 무차별 대입 8천여 건 확인) → SSH 키 전용 전환, 로그 보존·30일 보관, `.env` 일일 요약으로 알림 소음 정리 | [PR #19](https://github.com/yoosook75/ai-collab-pipeline/pull/19) |
+| 정기 점검: Dependabot 의존성 업데이트(Node 24 전환 3건 검토 후 머지, 쓰지 않는 2건 닫음) | [#2~#6](https://github.com/yoosook75/ai-collab-pipeline/pulls?q=author%3Aapp%2Fdependabot) |
 
 ## 다른 언어로 옮기려면
 
