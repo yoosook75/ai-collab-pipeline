@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\OpsUnblockController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\UnlockController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
@@ -44,3 +45,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/posts', [PostController::class, 'store'])->name('posts.store');
     });
 });
+
+Route::get('/ops/unblock/{ip}', OpsUnblockController::class)
+    ->middleware('signed')
+    ->where('ip', '[0-9a-fA-F:.]+')
+    ->name('ops.unblock');
+
+// Unmatched paths still pass through the web middleware (IP blocking) before 404.
+Route::fallback(fn () => abort(404));

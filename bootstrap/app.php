@@ -1,8 +1,11 @@
 <?php
 
+use App\Http\Middleware\BlockSuspiciousIps;
+use App\Http\Middleware\TrustConfiguredProxies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -12,7 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->replace(TrustProxies::class, TrustConfiguredProxies::class);
+        // Appended to the web group so it runs after the session starts (admin bypass).
+        $middleware->appendToGroup('web', BlockSuspiciousIps::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
