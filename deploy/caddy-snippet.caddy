@@ -1,0 +1,11 @@
+
+# --- ai-collab-pipeline (added 2026-11-26) ---
+acp-staging.trueway.kr {
+    encode zstd gzip
+    reverse_proxy acp-staging-web:8080
+}
+
+acp.trueway.kr {
+    encode zstd gzip
+    reverse_proxy acp-prod-web:8080
+}
