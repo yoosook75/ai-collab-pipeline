@@ -1,0 +1,53 @@
+name: 작업 요청
+description: 기능 추가나 수정을 요청합니다. 본문에 @claude가 있으면 AI가 바로 작업을 시작합니다.
+title: "[작업] "
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 무엇을
+      description: 무엇을 바꾸거나 추가하고 싶은지 적어 주세요.
+      placeholder: 게시글 목록에 페이지 번호를 추가해 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: 어디서
+      description: 어느 화면, 어느 기능인지 적어 주세요.
+      placeholder: 첫 화면(게시글 목록)
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 결과
+      description: 다 되었을 때 어떻게 보이고 동작해야 하는지 적어 주세요.
+      placeholder: 한 페이지에 10개씩 보이고, 아래에 페이지 번호가 나온다.
+    validations:
+      required: true
+  - type: textarea
+    id: checklist
+    attributes:
+      label: 완료 체크리스트
+      description: 확인할 항목을 체크박스로 적어 주세요.
+      value: |
+        - [ ] 
+        - [ ] 테스트 추가
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 참고 스크린샷
+      description: 있으면 붙여 넣어 주세요.
+    validations:
+      required: false
+  - type: textarea
+    id: ai
+    attributes:
+      label: AI에게 맡기기
+      description: 아래 줄을 그대로 두면 AI가 바로 작업을 시작합니다. 직접 하실 거면 지워 주세요.
+      value: "@claude 위 내용대로 작업해서 PR을 올려 주세요."
+    validations:
+      required: false
