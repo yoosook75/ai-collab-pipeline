@@ -548,11 +548,11 @@ it('warns when disk free below 10 percent', function () { /* 디스크 조회를
 - Create: `deploy/github-setup.md`(실제 수행 기록과 사용자용 재현 안내, 한국어)
 
 - [ ] **Step 1:** `gh repo create <owner>/ai-collab-pipeline --public --source . --push`(사용자 확인 후). 
-- [ ] **Step 2: 사용자 수행 안내 후 확인** — (a) GitHub App 생성(권한: Contents RW, Pull requests RW, Issues RW, Metadata R; 이 저장소에만 설치) → `ACP_APP_ID`, `ACP_APP_PRIVATE_KEY` 비밀값 (b) Claude GitHub App 설치 (c) `claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN`, 만료일 → 변수 `CLAUDE_TOKEN_EXPIRES` (d) 디스코드 채널 2개(`#dev-pipeline`, `#ops-alerts`) 웹훅 → `DISCORD_WEBHOOK_DEV`, `DISCORD_WEBHOOK_OPS` (e) 변수 `NOTIFY_PROVIDER=discord`, `STAGING_URL`, `PROD_URL`.
+- [ ] **Step 2: 사용자 수행 안내 후 확인** — (a) GitHub App 생성(권한: Contents RW, Pull requests RW, Issues RW, Metadata R — **Workflows·Packages 권한은 주지 않음**; 이 저장소에만 설치) → `ACP_APP_ID`, `ACP_APP_PRIVATE_KEY` 비밀값 (b) Claude GitHub App 설치(워크플로가 자체 App 토큰을 쓰므로 필요한지 첫 실행 때 확인, 불필요하면 생략) (c) `claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN`, 만료일 → 변수 `CLAUDE_TOKEN_EXPIRES` (d) 디스코드 채널 2개(`#dev-pipeline`, `#ops-alerts`) 웹훅 → `DISCORD_WEBHOOK_DEV`, `DISCORD_WEBHOOK_OPS` (e) 변수 `NOTIFY_PROVIDER=discord`, `STAGING_URL`, `PROD_URL`.
 - [ ] **Step 3:** 라벨 생성: `risk:high`(빨강), `risk:low`(초록), `incident`(보라).
-- [ ] **Step 4:** Environments: `staging`(보호 없음), `production`(필수 승인자 = 사용자, 배포 브랜치 `main`만). 각 환경 비밀값 `DEPLOY_SSH_KEY`, `DEPLOY_HOST`, `DEPLOY_KNOWN_HOSTS`는 Task 16 뒤 등록.
-- [ ] **Step 5:** `main` 룰셋(gh api): PR 필수, 승인 1, 코드 오너 리뷰 필수, 새 커밋 시 기존 승인 무효화, 필수 검사 `php-checks`·`secret-scan`, 강제 푸시·삭제 금지, 우회 목록 없음.
-- [ ] **Step 6: 검증** — `gh api repos/<owner>/ai-collab-pipeline/rulesets` 결과에 위 규칙 존재, `git push origin HEAD:main`(테스트 커밋)이 거부되는지 확인 후 테스트 커밋 정리.
+- [ ] **Step 4:** Environments: `staging`(배포 브랜치 `main`만), `production`(필수 승인자 = 사용자, 배포 브랜치 `main`만). 각 환경 비밀값 `DEPLOY_SSH_KEY`(**환경마다 다른 키**), `DEPLOY_HOST`, `DEPLOY_KNOWN_HOSTS`는 Task 16 뒤 등록. 배포 비밀값은 저장소 비밀값으로 절대 만들지 않는다. Settings → Actions → "Allow GitHub Actions to create and approve pull requests"가 **꺼져 있는지** 확인.
+- [ ] **Step 5:** `main` 룰셋(gh api): PR 필수, 승인 1, 코드 오너 리뷰 필수, 새 커밋 시 기존 승인 무효화, 필수 검사 `php-checks / checks`·`secret-scan`(재사용 워크플로를 호출하는 잡은 `호출잡 / 피호출잡` 이름으로 보고됨), 강제 푸시·삭제 금지. 우회: 저장소 관리자(사용자)만 **PR을 통해서만** 우회 가능(`bypass_mode: pull_request`) — 사용자가 직접 작성한 PR(첫 `feat/phase1` PR, README PR)은 본인이 승인할 수 없으므로 이 우회로 머지하고, AI(봇)가 작성한 PR은 사용자 승인으로 머지한다.
+- [ ] **Step 6: 검증** — `gh api repos/<owner>/ai-collab-pipeline/rulesets` 결과에 위 규칙 존재, 저장소 비밀값 목록에 `DEPLOY_*`가 없음, `git push origin HEAD:main`(테스트 커밋)이 거부되는지 확인 후 테스트 커밋 정리.
 
 ### Task 16: VPS 설정 (SSH, 임시 관리 계정 사용)
 
@@ -565,11 +565,11 @@ it('warns when disk free below 10 percent', function () { /* 디스크 조회를
 - [ ] **Step 1:** 이 PC에서 `ssh-keygen -t ed25519 -f ~/.ssh/claude_vps -C claude-setup -N ""` → 공개키를 사용자에게 보여 주고, 사용자가 서버에 임시 계정 `claude-setup`(NOPASSWD sudo) 생성·키 등록. 접속 확인 `ssh -i ~/.ssh/claude_vps claude-setup@<host> 'id'`.
 - [ ] **Step 2:** 읽기 전용 재확인: `docker network ls`, `docker network inspect` 로 서브넷 충돌 확인, Caddyfile 위치(`docker inspect webstack-caddy-1`의 마운트) 확인.
 - [ ] **Step 3 (사용자 확인 후):** `docker network create --subnet 172.30.0.0/16 acp-edge` → `docker network connect acp-edge webstack-caddy-1`(재시작 없음).
-- [ ] **Step 4:** `acp-deploy` 계정, `/opt/acp` 구조, `deploy.sh`(Task 13) 설치, `authorized_keys` 강제 명령 등록, GHCR 읽기(공개 패키지면 불필요; 비공개면 `read:packages` 토큰으로 `docker login`).
+- [ ] **Step 4:** `acp-deploy` 계정, `/opt/acp` 구조, `deploy.sh`(Task 13) 설치, `authorized_keys`에 **키 2개를 각각 다른 강제 명령으로** 등록(`command="/opt/acp/bin/deploy.sh staging",...` / `command="/opt/acp/bin/deploy.sh prod",...`), GHCR 읽기(공개 패키지면 불필요; 비공개면 `read:packages` 토큰으로 `docker login`).
 - [ ] **Step 5:** 환경별 `.env` 작성(사용자에게 메일 설정 값·도메인 받기): `APP_ENV`, `APP_KEY`(각각 생성), `APP_URL`, `DB_*`(환경별 다른 비밀번호), `OPS_NOTIFIER=discord`, `OPS_DISCORD_WEBHOOK`(ops 웹훅), `APP_ENV_LABEL`, `TRUSTED_PROXIES=172.30.0.0/16`, `GITHUB_REPO`, `GITHUB_INCIDENT_TOKEN`, `MAIL_*`. 권한 `600`, 소유자 `acp-deploy`.
 - [ ] **Step 6:** 사용자가 DNS에 하위 도메인 2개를 VPS IP로 등록. 
 - [ ] **Step 7 (사용자 확인 후):** Caddyfile 백업(`.bak-20261126`) → `deploy/caddy-snippet.caddy` 블록 2개 추가(`staging.<도메인> { reverse_proxy acp-staging-web:8080 }`, `app.<도메인> { reverse_proxy acp-prod-web:8080 }`) → `docker exec webstack-caddy-1 caddy validate --config /etc/caddy/Caddyfile` 통과 후 `caddy reload`. 기존 사이트 도메인 각각 `curl -sI` 200/30x 확인(전후 비교).
-- [ ] **Step 8:** 깃헙 Environments 비밀값 등록(`DEPLOY_SSH_KEY`는 배포 전용 새 키, `DEPLOY_KNOWN_HOSTS`는 `ssh-keyscan` 결과).
+- [ ] **Step 8:** 깃헙 Environments 비밀값 등록(`DEPLOY_SSH_KEY`는 staging·production 환경에 **서로 다른** 배포 전용 키, `DEPLOY_KNOWN_HOSTS`는 `ssh-keyscan` 결과).
 - [ ] **Step 9 (사용자에게 선택 안내):** 스왑 2GB 추가 여부.
 - [ ] **Step 10:** 모든 작업 완료 후 `claude-setup` 계정 삭제는 Task 17 끝에서.
 
@@ -588,6 +588,6 @@ it('warns when disk free below 10 percent', function () { /* 디스크 조회를
 - [ ] **Step 4: 시나리오 3(스테이징)** — 글 6개 연속 → 글쓰기 제한·숨김·알림 → 이메일 코드로 해제. `/.env` 접근 → IP 차단 알림 → 서명 링크로 해제.
 - [ ] **Step 5: 시나리오 4(스테이징)** — 스테이징 전용 에러 유발 라우트(`APP_ENV=staging`일 때만 등록, 관리자만 접근)로 예외 12회 → 에러 급증 알림 → incident 이슈(가림 처리 확인) → AI 분석 댓글·수정 PR. (이 라우트를 만드는 변경은 시나리오 1 방식으로 AI에게 요청해도 된다.)
 - [ ] **Step 6:** 외부 가동 확인: 스테이징 web 컨테이너를 잠시 중지(`docker compose -p acp-staging stop web`)해 uptime 알림 확인 후 재기동. 토큰 만료 알림은 `workflow_dispatch` + 임시 변수로 확인 후 원복.
-- [ ] **Step 7:** README: 한 장 구조도, "AI가 운영에 닿을 수 없는 이유", 위험도 게이트, 자동 차단 안전장치, 각 시나리오 실제 링크·GIF, 언어 교체 방법(`checks-php.yml`만 교체), 토큰 만료 운영 메모. 비밀값·서버 IP 노출 여부 `gitleaks detect` 재확인.
+- [ ] **Step 7:** README: 한 장 구조도, "AI가 운영에 닿을 수 없는 이유", 위험도 게이트, 자동 차단 안전장치, 각 시나리오 실제 링크·GIF, 언어 교체 방법(`checks-php.yml`만 교체), 토큰 만료 운영 메모, **공개 저장소의 예약 워크플로(uptime, token-expiry)는 60일 동안 저장소 활동이 없으면 깃헙이 자동으로 꺼 버린다**는 운영 메모와 다시 켜는 방법(Actions 탭 → 워크플로 → Enable), 장기 운영 시 외부 가동 확인 서비스 병행 권장. "AI가 운영에 닿을 수 없는 이유"에는 AI 작업을 임의 코드 실행으로 간주하고, 보장이 도구 허용 목록이 아니라 닿을 수 없는 구조(환경별·환경 고정 키, 보호된 main, Workflows 권한 없음, 릴리스 빌드에 공유 캐시 없음)에서 나온다는 점을 적는다. 비밀값·서버 IP 노출 여부 `gitleaks detect` 재확인.
 - [ ] **Step 8:** 서버 임시 계정 `claude-setup` 삭제, 이 PC의 `~/.ssh/claude_vps` 키 삭제 여부 사용자 확인.
 - [ ] **Step 9:** README PR을 통상 흐름으로 머지.

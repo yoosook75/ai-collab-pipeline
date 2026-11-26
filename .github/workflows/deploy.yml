@@ -1,0 +1,160 @@
+name: deploy
+
+# main -> build image -> staging (automatic) -> production (requires the owner's approval
+# in the `production` environment). Deploy secrets live only in their environments.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          # No shared Actions cache: AI jobs run in the same cache scope, so a release
+          # image must never reuse layers they could have written.
+          no-cache: true
+
+  staging:
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Deploy over SSH (forced command)
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy -p "$DEPLOY_PORT" -o StrictHostKeyChecking=yes "acp-deploy@$DEPLOY_HOST" "deploy staging $GITHUB_SHA" && rc=0 || rc=$?
+          rm -f ~/.ssh/deploy   # gone before any repo-defined step runs
+          exit "$rc"
+      - name: External health check
+        env:
+          URL: ${{ vars.STAGING_URL }}
+        run: |
+          for _ in $(seq 1 20); do curl -fsS -o /dev/null "$URL/up" && exit 0; sleep 3; done
+          echo "staging /up did not answer 200"; exit 1
+      - if: always()
+        uses: ./.github/actions/notify
+        env:
+          DISCORD_WEBHOOK_DEV: ${{ secrets.DISCORD_WEBHOOK_DEV }}
+          SLACK_WEBHOOK_DEV: ${{ secrets.SLACK_WEBHOOK_DEV }}
+        with:
+          provider: ${{ vars.NOTIFY_PROVIDER || 'discord' }}
+          channel: dev
+          level: ${{ job.status == 'success' && 'info' || 'critical' }}
+          title: "스테이징 배포 ${{ job.status == 'success' && '완료' || '실패' }}: ${{ github.sha }}"
+          summary: "${{ github.event.head_commit.message }}"
+          url: ${{ job.status == 'success' && vars.STAGING_URL || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+
+  production-approval-notice:
+    needs: staging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/notify
+        env:
+          DISCORD_WEBHOOK_DEV: ${{ secrets.DISCORD_WEBHOOK_DEV }}
+          SLACK_WEBHOOK_DEV: ${{ secrets.SLACK_WEBHOOK_DEV }}
+        with:
+          provider: ${{ vars.NOTIFY_PROVIDER || 'discord' }}
+          channel: dev
+          level: warn
+          title: "운영 배포 승인 대기: ${{ github.sha }}"
+          summary: "스테이징 확인 후 링크에서 'Review deployments' → production 승인"
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: ${{ vars.PROD_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Deploy over SSH (forced command)
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy -p "$DEPLOY_PORT" -o StrictHostKeyChecking=yes "acp-deploy@$DEPLOY_HOST" "deploy prod $GITHUB_SHA" && rc=0 || rc=$?
+          rm -f ~/.ssh/deploy   # gone before any repo-defined step runs
+          exit "$rc"
+      - name: External health check
+        env:
+          URL: ${{ vars.PROD_URL }}
+        run: |
+          for _ in $(seq 1 20); do curl -fsS -o /dev/null "$URL/up" && exit 0; sleep 3; done
+          echo "production /up did not answer 200"; exit 1
+      - if: success()
+        uses: ./.github/actions/notify
+        env:
+          DISCORD_WEBHOOK_DEV: ${{ secrets.DISCORD_WEBHOOK_DEV }}
+          SLACK_WEBHOOK_DEV: ${{ secrets.SLACK_WEBHOOK_DEV }}
+        with:
+          provider: ${{ vars.NOTIFY_PROVIDER || 'discord' }}
+          channel: dev
+          title: "운영 배포 완료: ${{ github.sha }}"
+          summary: "${{ github.event.head_commit.message }}"
+          url: ${{ vars.PROD_URL }}
+      - if: failure()
+        uses: ./.github/actions/notify
+        env:
+          DISCORD_WEBHOOK_OPS: ${{ secrets.DISCORD_WEBHOOK_OPS }}
+          SLACK_WEBHOOK_OPS: ${{ secrets.SLACK_WEBHOOK_OPS }}
+        with:
+          provider: ${{ vars.NOTIFY_PROVIDER || 'discord' }}
+          channel: ops
+          level: critical
+          title: "운영 배포 실패: ${{ github.sha }}"
+          summary: "자동 롤백은 하지 않습니다. 직전 버전은 서버의 /opt/acp/prod/previous_sha에 있습니다. 30일 안이면 이전 성공한 deploy 실행의 production 잡을 Re-run하고, 그 이후면 운영 키로 deploy prod <previous_sha>를 실행하세요."
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

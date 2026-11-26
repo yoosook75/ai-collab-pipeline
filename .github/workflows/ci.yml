@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  php-checks:
+    uses: ./.github/workflows/checks-php.yml
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  report:
+    needs: [php-checks, secret-scan]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/notify
+        env:
+          DISCORD_WEBHOOK_DEV: ${{ secrets.DISCORD_WEBHOOK_DEV }}
+          SLACK_WEBHOOK_DEV: ${{ secrets.SLACK_WEBHOOK_DEV }}
+        with:
+          provider: ${{ vars.NOTIFY_PROVIDER || 'discord' }}
+          channel: dev
+          level: ${{ (needs.php-checks.result == 'success' && needs.secret-scan.result == 'success') && 'info' || 'warn' }}
+          title: "검사 ${{ (needs.php-checks.result == 'success' && needs.secret-scan.result == 'success') && '통과' || '실패' }}: #${{ github.event.pull_request.number }} ${{ github.event.pull_request.title }}"
+          summary: "테스트·정적분석·의존성: ${{ needs.php-checks.result }} / 비밀키 검사: ${{ needs.secret-scan.result }}"
+          url: ${{ github.event.pull_request.html_url }}

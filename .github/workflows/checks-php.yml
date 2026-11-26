@@ -1,0 +1,39 @@
+# Language-specific checks. To move the app to another language,
+# replace only this file and keep the job name `checks`.
+name: checks-php
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: pdo_sqlite, sqlite3, intl, zip
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Code style (Pint)
+        run: vendor/bin/pint --test
+
+      - name: Static analysis (Larastan)
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+      - name: Tests (Pest)
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          vendor/bin/pest
+
+      - name: Dependency vulnerabilities
+        run: composer audit --no-interaction
