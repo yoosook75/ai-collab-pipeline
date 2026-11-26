@@ -33,7 +33,8 @@ class UnlockController extends Controller
 
         // Same response whether or not the account exists or is restricted.
         return redirect()->route('unlock.verify', ['purpose' => $data['purpose']])
-            ->with('status', '해당 계정이 제한 상태라면 이메일로 확인 코드를 보냈습니다.');
+            ->with('status', '해당 계정이 제한 상태라면 이메일로 확인 코드를 보냈습니다.')
+            ->withInput($request->only('email'));
     }
 
     public function edit(Request $request): View

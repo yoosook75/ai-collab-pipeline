@@ -120,3 +120,16 @@ it('forwarded header from trusted proxy is used', function () {
     expect(app(IpBlocker::class)->isBlocked('198.51.100.7'))->toBeTrue()
         ->and(app(IpBlocker::class)->isBlocked('172.30.0.5'))->toBeFalse();
 });
+
+it('unblock result page uses the board layout with ip and back link', function () {
+    app(IpBlocker::class)->block('203.0.113.9', 'test', 60);
+    $url = URL::temporarySignedRoute('ops.unblock', now()->addHour(), ['ip' => '203.0.113.9']);
+
+    $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.1'])->get($url)
+        ->assertOk()
+        ->assertSee('차단을 해제했습니다')
+        ->assertSee('203.0.113.9')
+        ->assertSee('게시판으로 돌아가기')
+        ->assertSee(route('posts.index'), false)
+        ->assertSee('width=device-width', false);
+});

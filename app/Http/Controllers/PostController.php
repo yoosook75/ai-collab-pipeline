@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Post;
 use App\Security\SpamGuard;
+use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -30,9 +31,13 @@ class PostController extends Controller
                 ->withErrors(['body' => '스팸 의심으로 글쓰기가 제한되었습니다. 이메일 인증으로 해제하세요.']);
         }
 
+        $utf8 = fn (string $attribute, mixed $value, Closure $fail) => is_string($value) && ! mb_check_encoding($value, 'UTF-8')
+            ? $fail('UTF-8 인코딩이 아닌 문자가 포함되어 있습니다.')
+            : null;
+
         $data = $request->validate([
-            'title' => ['required', 'string', 'max:200'],
-            'body' => ['required', 'string', 'max:10000'],
+            'title' => ['bail', 'required', 'string', $utf8, 'max:200'],
+            'body' => ['bail', 'required', 'string', $utf8, 'max:10000'],
         ]);
 
         $post = $user->posts()->create([

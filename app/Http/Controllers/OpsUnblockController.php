@@ -3,14 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Security\IpBlocker;
-use Illuminate\Http\Response;
+use Illuminate\View\View;
 
 class OpsUnblockController extends Controller
 {
-    public function __invoke(string $ip, IpBlocker $blocker): Response
+    public function __invoke(string $ip, IpBlocker $blocker): View
     {
         $blocker->unblock($ip);
 
-        return response("{$ip} 차단을 해제했습니다.");
+        return view('ops.unblocked', ['ip' => $ip]);
     }
 }

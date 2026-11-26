@@ -91,3 +91,12 @@ it('unlocking allows login again', function () {
     $this->post('/login', ['email' => $u->email, 'password' => 'right-pass'])->assertRedirect('/');
     $this->assertAuthenticated();
 });
+
+it('carries the requested email over to the verify screen', function () {
+    Mail::fake();
+
+    $this->followingRedirects()
+        ->post('/unlock', ['email' => 'someone@x.test', 'purpose' => 'login'])
+        ->assertOk()
+        ->assertSee('value="someone@x.test"', false);
+});
