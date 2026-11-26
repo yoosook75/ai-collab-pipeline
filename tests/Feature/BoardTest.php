@@ -10,6 +10,38 @@ it('lists only visible posts', function () {
     $this->get('/')->assertOk()->assertSee('shown')->assertDontSee('hidden');
 });
 
+it('paginates posts 10 per page, newest first', function () {
+    foreach (range(1, 11) as $i) {
+        Post::factory()->create([
+            'title' => sprintf('post-%02d', $i),
+            'created_at' => now()->subMinutes(20 - $i),
+        ]);
+    }
+
+    $this->get('/')->assertOk()
+        ->assertSee('post-11')
+        ->assertDontSee('post-01')
+        ->assertSee('?page=2', false);
+
+    $this->get('/?page=2')->assertOk()
+        ->assertSee('post-01')
+        ->assertDontSee('post-02');
+});
+
+it('does not show page links for 10 posts or fewer', function () {
+    Post::factory()->count(10)->create();
+
+    $this->get('/')->assertOk()->assertDontSee('?page=2', false);
+});
+
+it('does not count hidden posts in page count', function () {
+    Post::factory()->count(10)->create();
+    Post::factory()->count(3)->create(['hidden_at' => now()]);
+
+    $this->get('/')->assertOk()->assertDontSee('?page=2', false);
+    $this->get('/?page=2')->assertOk()->assertSee('아직 글이 없습니다.');
+});
+
 it('requires verified email to post', function () {
     $user = User::factory()->unverified()->create();
 
