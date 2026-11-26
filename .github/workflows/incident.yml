@@ -27,11 +27,11 @@ jobs:
       contents: read
       issues: read
       pull-requests: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: ./.github/actions/notify
         env:
@@ -58,6 +58,9 @@ jobs:
         with:
           app-id: ${{ secrets.ACP_APP_ID }}
           private-key: ${{ secrets.ACP_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
 
       - uses: anthropics/claude-code-action@v1
         with:

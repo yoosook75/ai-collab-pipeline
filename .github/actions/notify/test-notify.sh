@@ -19,6 +19,11 @@ line' URL='' bash notify.sh)
 check "special chars escaped"   "echo \"\$out\" | jq -e '.embeds[0].title | contains(\"quote\")' >/dev/null"
 check "empty url omitted"       "echo \"\$out\" | jq -e '.embeds[0] | has(\"url\") | not' >/dev/null"
 
+long_title=$(printf "가%.0s" $(seq 1 300)); long_sum=$(printf "x%.0s" $(seq 1 5000))
+out=$(NOTIFY_DRY_RUN=1 PROVIDER=discord CHANNEL=dev TITLE="$long_title" LEVEL=info SUMMARY="$long_sum" URL= bash notify.sh)
+check "discord title capped at 256"         "echo \"\$out\" | jq -e '.embeds[0].title | length <= 256' >/dev/null"
+check "discord description capped at 4096"  "echo \"\$out\" | jq -e '.embeds[0].description | length <= 4096' >/dev/null"
+
 set +e
 PROVIDER=discord CHANNEL=dev TITLE=t LEVEL=info SUMMARY=s URL= DISCORD_WEBHOOK_DEV= bash notify.sh >/dev/null 2>&1
 check "missing webhook is not an error" "[ $? -eq 0 ]"

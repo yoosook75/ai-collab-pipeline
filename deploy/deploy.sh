@@ -1,18 +1,25 @@
 #!/usr/bin/env bash
-# Forced command for the `acp-deploy` SSH key (see deploy/server-setup.md):
-#   command="/opt/acp/bin/deploy.sh",no-port-forwarding,no-agent-forwarding,no-pty,no-X11-forwarding ssh-ed25519 ...
-# Only accepts: deploy <staging|prod> <40-hex git sha>
+# Forced command, one SSH key per environment (see deploy/server-setup.md):
+#   command="/opt/acp/bin/deploy.sh staging",no-port-forwarding,no-agent-forwarding,no-pty,no-X11-forwarding ssh-ed25519 <staging key>
+#   command="/opt/acp/bin/deploy.sh prod",no-port-forwarding,no-agent-forwarding,no-pty,no-X11-forwarding ssh-ed25519 <prod key>
+# The environment is fixed by the key ($1); the caller may only send: deploy <that env> <40-hex git sha>
 set -euo pipefail
 
 ACP_ROOT="${ACP_ROOT:-/opt/acp}"
 IMAGE_REPO="${IMAGE_REPO:-ghcr.io/yoosook75/ai-collab-pipeline}"
+bound_env="${1:-}"
 cmd="${SSH_ORIGINAL_COMMAND:-}"
 
-if [[ ! "$cmd" =~ ^deploy\ (staging|prod)\ ([0-9a-f]{40})$ ]]; then
-  echo "rejected: expected 'deploy <staging|prod> <sha>'" >&2
+if [[ "$bound_env" != staging && "$bound_env" != prod ]]; then
+  echo "rejected: key is not bound to an environment" >&2
   exit 2
 fi
-env_name="${BASH_REMATCH[1]}"
+
+if [[ ! "$cmd" =~ ^deploy\ (staging|prod)\ ([0-9a-f]{40})$ ]] || [[ "${BASH_REMATCH[1]}" != "$bound_env" ]]; then
+  echo "rejected: this key only accepts 'deploy $bound_env <sha>'" >&2
+  exit 2
+fi
+env_name="$bound_env"
 sha="${BASH_REMATCH[2]}"
 
 env_file="$ACP_ROOT/$env_name/.env"

@@ -22,7 +22,7 @@ esac
 case "$PROVIDER" in
   discord)
     payload=$(jq -n --arg t "$TITLE" --arg s "$SUMMARY" --arg u "$URL" --argjson c "$color" \
-      '{embeds: [({title: $t, description: $s, color: $c} + (if $u == "" then {} else {url: $u} end))]}')
+      '{embeds: [({title: ($t | .[0:256]), description: ($s | .[0:4096]), color: $c} + (if $u == "" then {} else {url: $u} end))]}')
     var="DISCORD_WEBHOOK_${CHANNEL^^}"
     ;;
   slack)
