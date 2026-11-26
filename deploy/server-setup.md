@@ -88,3 +88,29 @@ sudo -u acp-deploy env ACP_ENV_FILE=/opt/acp/staging/.env APP_IMAGE=ghcr.io/yoos
 ```
 
 기록: 2026-11-26 PR #9(상태 점검 수정) 머지 후 위 절차로 반영 → web healthy, worker/scheduler 점검 없음.
+
+## 6. Caddy 변경 규칙 (기존 사이트와 공유하는 단일 입구)
+
+`webstack-caddy-1`은 이 프로젝트와 기존 사이트(deskora, g7-chatbot)가 **함께 쓰는 유일한 입구**입니다.
+컨테이너·네트워크·DB는 분리돼 있지만, Caddy가 멈추면 모든 사이트가 같이 멈춥니다.
+
+| 상황 | 기존 사이트 영향 |
+|---|---|
+| 잘못된 설정으로 **reload** | 없음 — Caddy는 새 설정 적용에 실패하면 기존 설정으로 계속 동작 |
+| 잘못된 설정이 파일에 남은 채 **재시작**(재부팅, 도커 업데이트 포함) | **전부 중단** — 시작 자체가 실패 |
+
+그래서 Caddy 변경은 항상 이 순서로만 합니다.
+
+1. 백업: `sudo cp -p /opt/webstack/Caddyfile /opt/webstack/Caddyfile.bak-$(date +%Y%m%d%H%M)`
+2. 수정은 **덧붙이기**로(`sudo tee -a`). 파일 하나만 컨테이너에 연결돼 있어 통째로 바꾸면 컨테이너가 못 볼 수 있음
+3. 검증: `docker exec webstack-caddy-1 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`
+   - 실패하면 즉시 백업으로 되돌림(`sudo cp -p 백업 /opt/webstack/Caddyfile`) — 잘못된 설정을 파일에 남겨 두지 않음
+4. 반영은 **reload만**: `docker exec webstack-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`
+   - `docker restart`, `docker compose restart`는 쓰지 않음
+5. 확인: 모든 사이트에 `curl -sI https://<도메인>/` → 200/30x
+
+감시: `uptime` 워크플로가 10분마다 이 프로젝트(`/up`)와 기존 사이트(비밀값 `EXTRA_UPTIME_URLS`, 한 줄에 하나)를 밖에서 확인하고,
+이상이 있으면 디스코드 `#ops-alerts`로 알립니다.
+
+나중에 더 분리하려면: 메인 Caddyfile에 `import` 한 줄만 두고 이 프로젝트 블록을 별도 파일로 옮깁니다.
+단, 지금은 파일 하나만 연결돼 있어 폴더를 연결하려면 **Caddy 재시작이 한 번 필요**하므로(기존 사이트가 잠깐 끊김) 계획된 점검 시간에 합니다.

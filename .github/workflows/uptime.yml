@@ -1,6 +1,9 @@
 name: uptime
 
-# External check: the app cannot report its own outage, so GitHub checks it from outside.
+# External check: an app cannot report its own outage, so GitHub checks it from outside.
+# Targets: this project's staging/production (/up) and, from the EXTRA_UPTIME_URLS secret
+# (one URL per line), the other sites that share the same Caddy reverse proxy.
+# Secret values are masked in public run logs.
 
 on:
   schedule:
@@ -13,45 +16,39 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [staging, production]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Probe /up and TLS
+      - name: Probe all targets
         id: probe
         env:
-          URL: ${{ matrix.target == 'staging' && vars.STAGING_URL || vars.PROD_URL }}
+          STAGING_URL: ${{ vars.STAGING_URL }}
+          PROD_URL: ${{ vars.PROD_URL }}
+          EXTRA: ${{ secrets.EXTRA_UPTIME_URLS }}
         run: |
-          if [ -z "$URL" ]; then echo "level=skip" >> "$GITHUB_OUTPUT"; exit 0; fi
-          problems=()
-          level=info
+          targets=()
+          [ -n "$STAGING_URL" ] && targets+=("$STAGING_URL/up")
+          [ -n "$PROD_URL" ] && targets+=("$PROD_URL/up")
+          while IFS= read -r u; do u="${u//$'\r'/}"; [ -n "$u" ] && targets+=("$u"); done <<< "$EXTRA"
 
-          result=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 15 "$URL/up" || echo "000 15")
-          code=${result% *}; secs=${result#* }
-          if [ "$code" != "200" ]; then
-            problems+=("/up 응답 코드 $code"); level=critical
-          elif awk "BEGIN{exit !($secs > 3)}"; then
-            problems+=("응답 느림: ${secs}초"); [ "$level" = critical ] || level=warn
-          fi
+          worst=ok
+          report=""
+          for t in "${targets[@]}"; do
+            res="$(bash .github/scripts/probe.sh "$t")"
+            lvl="$(head -1 <<< "$res")"
+            if [ "$lvl" != ok ]; then
+              report+="${t}"$'\n'"$(tail -n +2 <<< "$res" | sed 's/^/  - /')"$'\n'
+              if [ "$lvl" = critical ] || [ "$worst" = ok ]; then worst="$lvl"; fi
+            fi
+          done
 
-          host=$(echo "$URL" | sed -E 's#^https?://([^/:]+).*#\1#')
-          not_after=$(echo | openssl s_client -servername "$host" -connect "$host:443" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || true)
-          if [ -n "$not_after" ]; then
-            days=$(bash .github/scripts/days-until.sh "$(date -u -d "$not_after" +%F)")
-            if [ "$days" -lt 14 ]; then problems+=("TLS 인증서 만료까지 ${days}일"); [ "$level" = critical ] || level=warn; fi
-          else
-            problems+=("TLS 인증서를 확인할 수 없음"); [ "$level" = critical ] || level=warn
-          fi
+          echo "checked ${#targets[@]} target(s): $worst"
+          echo "level=$worst" >> "$GITHUB_OUTPUT"
+          { echo "summary<<EOF_SUM"; printf '%s' "$report"; echo "EOF_SUM"; } >> "$GITHUB_OUTPUT"
 
-          if [ ${#problems[@]} -eq 0 ]; then echo "level=ok" >> "$GITHUB_OUTPUT"; exit 0; fi
-          echo "level=$level" >> "$GITHUB_OUTPUT"
-          { echo "summary<<EOF_SUM"; printf '%s\n' "${problems[@]}"; echo "EOF_SUM"; } >> "$GITHUB_OUTPUT"
-          printf '%s\n' "${problems[@]}"
-
-      - if: steps.probe.outputs.level == 'warn' || steps.probe.outputs.level == 'critical'
+      - if: steps.probe.outputs.level != 'ok'
         uses: ./.github/actions/notify
         env:
           DISCORD_WEBHOOK_OPS: ${{ secrets.DISCORD_WEBHOOK_OPS }}
@@ -60,6 +57,6 @@ jobs:
           provider: ${{ vars.NOTIFY_PROVIDER || 'discord' }}
           channel: ops
           level: ${{ steps.probe.outputs.level }}
-          title: "가동 확인 이상: ${{ matrix.target }}"
+          title: "가동 확인 이상"
           summary: ${{ steps.probe.outputs.summary }}
-          url: ${{ matrix.target == 'staging' && vars.STAGING_URL || vars.PROD_URL }}
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
