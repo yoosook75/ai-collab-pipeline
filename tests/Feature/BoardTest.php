@@ -67,3 +67,21 @@ it('registers and logs in', function () {
     $this->post('/login', ['email' => 'a@x.test', 'password' => 'Passw0rd!x'])->assertRedirect('/');
     $this->assertAuthenticated();
 });
+
+it('rejects non-utf8 title or body with 422 and stores nothing', function () {
+    $user = User::factory()->create();
+    $bad = mb_convert_encoding('안녕', 'CP949', 'UTF-8');
+
+    $this->actingAs($user)->withHeader('Accept', 'application/json')->post('/posts', ['title' => $bad, 'body' => '정상 본문'])->assertStatus(422);
+    $this->actingAs($user)->withHeader('Accept', 'application/json')->post('/posts', ['title' => '정상 제목', 'body' => "\xBD\xC3"])->assertStatus(422);
+
+    expect(Post::count())->toBe(0);
+});
+
+it('still stores valid korean utf-8 posts', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->post('/posts', ['title' => '안녕하세요', 'body' => '한글 본문입니다'])->assertRedirect(route('posts.index'));
+
+    expect(Post::where('title', '안녕하세요')->exists())->toBeTrue();
+});
