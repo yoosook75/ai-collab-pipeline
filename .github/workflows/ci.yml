@@ -24,20 +24,63 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # 검사가 끝난 뒤 한 번만 알림: 통과면 "담당자 검토 요청 · #번호 제목 / 자동 검사 통과 · 병합 전 검토 필요",
+  # 실패면 "검사 실패 · #번호 제목 / 수정 필요 · 실패한 검사". 위험도 high면 바뀐 위험 파일을 함께 적음.
   report:
     needs: [php-checks, secret-scan]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
+      # Scripts and the notify action come from the BASE commit, never from the PR,
+      # so a PR cannot rewrite its own risk level or notification text.
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/notify
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Build message
+        id: msg
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PHP_RESULT: ${{ needs.php-checks.result }}
+          SECRET_RESULT: ${{ needs.secret-scan.result }}
+        run: |
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed.txt"
+          bash .github/scripts/classify-risk.sh "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/risk.txt"
+          export RISK="$(head -1 "$RUNNER_TEMP/risk.txt")"
+          export RISK_FILES="$(tail -n +2 "$RUNNER_TEMP/risk.txt")"
+          if [ -f .github/scripts/review-message.sh ]; then
+            bash .github/scripts/review-message.sh > "$RUNNER_TEMP/msg.txt"
+          else
+            # base에 아직 스크립트가 없을 때(이 변경이 처음 들어가는 PR)만 쓰는 예전 형식
+            ok=$([ "$PHP_RESULT" = success ] && [ "$SECRET_RESULT" = success ] && echo 1 || echo 0)
+            printf '%s\n%s\n%s\n' "$([ "$ok" = 1 ] && echo info || echo warn)" \
+              "검사 $([ "$ok" = 1 ] && echo 통과 || echo 실패): #$PR_NUMBER $PR_TITLE" \
+              "테스트·정적분석·의존성: $PHP_RESULT / 비밀키 검사: $SECRET_RESULT" > "$RUNNER_TEMP/msg.txt"
+          fi
+          {
+            echo "level=$(sed -n 1p "$RUNNER_TEMP/msg.txt")"
+            echo "title<<EOF_TITLE"; sed -n 2p "$RUNNER_TEMP/msg.txt"; echo "EOF_TITLE"
+            echo "summary<<EOF_SUMMARY"; tail -n +3 "$RUNNER_TEMP/msg.txt"; echo "EOF_SUMMARY"
+          } >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/msg.txt"
+
+      - if: steps.msg.outputs.level != 'skip'
+        uses: ./.github/actions/notify
         env:
           DISCORD_WEBHOOK_DEV: ${{ secrets.DISCORD_WEBHOOK_DEV }}
           SLACK_WEBHOOK_DEV: ${{ secrets.SLACK_WEBHOOK_DEV }}
         with:
           provider: ${{ vars.NOTIFY_PROVIDER || 'discord' }}
           channel: dev
-          level: ${{ (needs.php-checks.result == 'success' && needs.secret-scan.result == 'success') && 'info' || 'warn' }}
-          title: "검사 ${{ (needs.php-checks.result == 'success' && needs.secret-scan.result == 'success') && '통과' || '실패' }}: #${{ github.event.pull_request.number }} ${{ github.event.pull_request.title }}"
-          summary: "테스트·정적분석·의존성: ${{ needs.php-checks.result }} / 비밀키 검사: ${{ needs.secret-scan.result }}"
+          level: ${{ steps.msg.outputs.level }}
+          title: ${{ steps.msg.outputs.title }}
+          summary: ${{ steps.msg.outputs.summary }}
           url: ${{ github.event.pull_request.html_url }}
