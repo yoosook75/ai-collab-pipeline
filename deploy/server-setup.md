@@ -152,3 +152,26 @@ sudo -u acp-deploy env ACP_ENV_FILE=/opt/acp/staging/.env APP_IMAGE=ghcr.io/yoos
   - root 전용, `SHA256SUMS` 포함
   - `/var/log` 밖에 있어 자동 삭제 대상이 아님
 - 남은 일: 기존 컨테이너(deskora, g7, webstack)의 도커 로그 순환은 재시작이 필요하므로 점검 시간에 적용
+
+## PHP·nginx 보안 패치 자동 적용 (2026-11-27 적용, nginx 추가 같은 날)
+
+같은 계열 안에서 보안 패치가 나왔을 때만 움직임. 버전업(PHP 8.4 → 8.5, nginx 1.30 → 1.31, phpMyAdmin 5.2 → 5.3)은 하지 않고 알림만 보냄.
+
+- PHP: php.net 릴리스 중 `security` 태그가 붙은 것
+- nginx: nginx.org 보안 공지(`security_advisories.html`)의 `Not vulnerable: x.y.z+` 버전. 지금 계열이 최신·안정 두 계열이 아니면(지원 종료) "버전업 필요" 알림을 보냄
+
+| 타이머 | 시각 | 하는 일 |
+|---|---|---|
+| `acp-secpatch-check.timer` | 매일 18:00 KST | 컨테이너별 실행 중인 PHP·nginx 버전을 보안 공지와 비교. 공식 이미지에 패치가 들어왔으면 그날 밤 적용을 예약하고 `#ops-alerts`로 예고 |
+| `acp-secpatch-apply.timer` | 매일 04:00 KST | 예약이 있을 때만 실행. 이전 이미지를 `:secpatch-backup`으로 남기고 다시 빌드/받기 → 실행 여부·PHP/nginx 버전·사이트 응답 점검 → 실패하면 이전 이미지로 되돌림 → 결과 알림 |
+
+- 대상 목록: `/etc/acp-secpatch/targets.json` (형식: `deploy/ops/secpatch-targets.example.json`)
+  - `build`: Dockerfile로 빌드하는 컨테이너 (`compose build --pull`)
+  - `pull`: 공식 이미지를 그대로 쓰는 컨테이너 (`compose pull`)
+  - `software`: `php`(기본) 또는 `nginx`
+  - `compose_files`: override 파일을 쓰는 서비스는 함께 적어야 재배포 때 설정이 빠지지 않음 (예: deskora-web의 WebP·업로드 마운트)
+  - `notify`: 알림만. acp는 GitHub Actions 배포 때 최신 PHP로 빌드되므로 재배포로 반영
+- 공식 이미지가 아직 패치 버전으로 갱신되지 않았으면 기다렸다가 다음 날 다시 확인
+- 같은 내용의 알림은 버전마다 한 번만 보냄 (`/var/lib/acp-secpatch/state.json`)
+- 수동 확인: `sudo python3 /opt/acp/bin/php_secpatch.py check --dry-run`
+- 테스트: `python -m unittest deploy/ops/test_php_secpatch.py`
