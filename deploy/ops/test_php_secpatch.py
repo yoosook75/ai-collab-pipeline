@@ -106,6 +106,92 @@ class Apply(unittest.TestCase):
         self.assertFalse(ok)
 
 
+NGINX_ADVISORIES = """
+<li><p>Excessive CPU usage<br>Not vulnerable: 1.31.10+, 1.30.8+<br>Vulnerable: 1.21.4-1.31.9</p></li>
+<li><p>Use-after-free<br>Not vulnerable: 1.31.9+, 1.30.7+<br>Vulnerable: 0.6.18-1.31.8</p></li>
+<li><p>NULL pointer<br>Not vulnerable: 1.31.9+<br>Vulnerable: 1.31.4-1.31.8</p></li>
+<li><p>Old<br>Not vulnerable: 1.29.7+, 1.28.3+<br></p></li>
+"""
+
+NGINX_WEB = {"name": "deskora-web", "software": "nginx", "mode": "build", "base": "nginx:1.30-alpine",
+             "container": "deskora-web", "dir": "/opt/apps/deskora-shopping-mall/api", "service": "web",
+             "compose_files": ["compose.yaml", "compose.override.yaml"],
+             "health": "https://deskora.example/", "resolve": "deskora.example:443:127.0.0.1"}
+
+
+class Nginx(unittest.TestCase):
+    def test_parses_fixed_versions_from_advisories(self):
+        rel = sp.nginx_fixed_releases(NGINX_ADVISORIES)
+        self.assertEqual(sp.security_releases_after(rel, "1.30.6"), ["1.30.7", "1.30.8"])
+        self.assertEqual(sp.security_releases_after(rel, "1.30.8"), [])
+
+    def test_same_rules_no_auto_minor_upgrade(self):
+        rel = sp.nginx_fixed_releases(NGINX_ADVISORIES)
+        sec = sp.security_releases_after(rel, "1.30.7")
+        self.assertEqual(sp.decide(NGINX_WEB, "1.30.7", "1.30.8", sec)[0], "apply")
+        self.assertEqual(sp.decide(NGINX_WEB, "1.30.7", "1.31.10", sec)[0], "notify")
+
+    def test_reads_running_and_image_nginx_version(self):
+        def run(cmd):
+            j = " ".join(cmd)
+            if "nginx -v" in j:
+                return 0, "nginx version: nginx/1.30.7"
+            if "image inspect" in j:
+                return 0, "PATH=/usr/bin\nNGINX_VERSION=1.30.8\n"
+            return 0, ""
+        self.assertEqual(sp.container_version(NGINX_WEB, run), "1.30.7")
+        self.assertEqual(sp.image_version(NGINX_WEB, "nginx:1.30-alpine", run), ("1.30.8", None))
+
+    def test_apply_keeps_compose_override_and_verifies_nginx_version(self):
+        class R(FakeRunner):
+            def __call__(self, cmd):
+                j = " ".join(cmd)
+                if "nginx -v" in j:
+                    self.cmds.append(j)
+                    return 0, "nginx version: nginx/1.30.8"
+                return super().__call__(cmd)
+        run = R()
+        ok, msg = sp.apply_target(NGINX_WEB, "1.30.8", run=run, settle=0)
+        self.assertTrue(ok, msg)
+        log = "\n".join(run.cmds)
+        self.assertIn("-f /opt/apps/deskora-shopping-mall/api/compose.yaml -f /opt/apps/deskora-shopping-mall/api/compose.override.yaml", log)
+        self.assertIn("build --pull web", log)
+
+    def test_check_schedules_nginx_patch(self):
+        def run(cmd):
+            j = " ".join(cmd)
+            if "nginx -v" in j:
+                return 0, "nginx version: nginx/1.30.7"
+            if "image inspect" in j:
+                return 0, "NGINX_VERSION=1.30.8\n"
+            return 0, ""
+        orig = sp.fetch_releases
+        sp.fetch_releases = lambda software, line: sp.nginx_fixed_releases(NGINX_ADVISORIES)
+        try:
+            st = {}
+            pending = sp.check([NGINX_WEB], st, dry_run=True, run=run)
+        finally:
+            sp.fetch_releases = orig
+        self.assertEqual(pending, [{"name": "deskora-web", "expected": "1.30.8"}])
+
+
+class NginxEol(unittest.TestCase):
+    def test_notifies_when_running_branch_no_longer_gets_fixes(self):
+        def run(cmd):
+            return (0, "nginx version: nginx/1.27.5") if "nginx -v" in " ".join(cmd) else (0, "")
+        orig = sp.fetch_releases
+        sp.fetch_releases = lambda software, line: sp.nginx_fixed_releases(NGINX_ADVISORIES)
+        sent = []
+        orig_send = sp.send
+        sp.send = lambda title, desc, level, dry_run=False: sent.append(desc)
+        try:
+            pending = sp.check([NGINX_WEB], {}, run=run)
+        finally:
+            sp.fetch_releases, sp.send = orig, orig_send
+        self.assertEqual(pending, [])
+        self.assertTrue(sent and "지원" in sent[0] and "1.27" in sent[0], sent)
+
+
 class State(unittest.TestCase):
     def test_notifies_once_per_target_version(self):
         with tempfile.TemporaryDirectory() as d:

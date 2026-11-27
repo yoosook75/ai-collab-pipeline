@@ -1,9 +1,6 @@
 [
-  {"name": "example-build", "mode": "build", "base": "php:8.4-apache",
-   "container": "example-php", "dir": "/opt/apps/example", "service": "php",
-   "health": "https://example.invalid/", "resolve": "example.invalid:443:127.0.0.1"},
-  {"name": "phpmyadmin", "mode": "pull", "base": "phpmyadmin:apache", "app_from_image": true,
-   "container": "webstack-phpmyadmin-1", "dir": "/opt/webstack", "service": "phpmyadmin",
-   "health": "http://127.0.0.1:8081/"},
+  {"name": "example-build", "mode": "build", "base": "php:8.4-apache", "container": "example-php", "dir": "/opt/apps/example", "service": "php", "health": "https://example.invalid/", "resolve": "example.invalid:443:127.0.0.1"},
+  {"name": "phpmyadmin", "mode": "pull", "base": "phpmyadmin:apache", "app_from_image": true, "container": "webstack-phpmyadmin-1", "dir": "/opt/webstack", "service": "phpmyadmin", "health": "http://127.0.0.1:8081/"},
+  {"name": "example-nginx", "software": "nginx", "mode": "build", "base": "nginx:1.30-alpine", "container": "example-web", "dir": "/opt/apps/example-shop", "service": "web", "compose_files": ["compose.yaml", "compose.override.yaml"], "health": "https://shop.example.invalid/", "resolve": "shop.example.invalid:443:127.0.0.1"},
   {"name": "acp-prod", "mode": "notify", "container": "acp-prod-web-1"}
 ]
